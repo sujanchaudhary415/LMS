@@ -8,8 +8,11 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       - postgres
+      - redis
     networks:
       - s-network
 
@@ -27,9 +30,21 @@ services:
     networks:
       - s-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: lms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - s-network
+    command: redis-server --appendonly yes
+
 networks:
   s-network:
     driver: bridge
 
 volumes:
   postgres-data:
+  redis-data:

@@ -22,6 +22,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.demo.security.ratelimit.RateLimitService;
+import com.example.demo.security.ratelimit.RateLimitExceededException;
+import java.time.Duration;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -30,19 +34,42 @@ public class AuthController {
 
     private final AuthService authService;
     private final CookieService cookieService;
+    private final RateLimitService rateLimitService;
 
     @PostMapping("/signup")
     @Operation(summary = "Register a user")
-    public ResponseEntity<ApiResponse<AuthResponse>>Signup(@Valid @RequestBody SignupRequest request){
+    public ResponseEntity<ApiResponse<AuthResponse>>Signup(@Valid @RequestBody SignupRequest request,HttpServletRequest httpRequest){
+           String clientIp=getClientIp(httpRequest);
+           boolean allowed=rateLimitService.isAllowed(
+                   "signup",
+                   clientIp,
+                   3,
+                   Duration.ofMinutes(10)
+           );
+           if(!allowed){
+               throw new RateLimitExceededException();
+           }
            AuthResponse response =authService.Signup(request);
            return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("User created successfully",response));
     }
 
     @PostMapping("/signin")
     @Operation(summary = "Sign in user")
-    public ResponseEntity<ApiResponse<AuthResponse>>Signin(@Valid @RequestBody LoginRequest request){
-        LoginResult result=authService.Signin(request);
+    public ResponseEntity<ApiResponse<AuthResponse>>Signin(@Valid @RequestBody LoginRequest request,HttpServletRequest httpRequest){
+        String clientIp = getClientIp(httpRequest);
+        boolean allowed = rateLimitService.isAllowed(
+                "signin",
+                clientIp,
+                5,
+                Duration.ofMinutes(1)
+        );
+        System.out.println("Signin rate-limit check: IP=" + clientIp
+                + ", allowed=" + allowed);
+        if (!allowed) {
+            throw new RateLimitExceededException();
+        }
 
+        LoginResult result=authService.Signin(request);
         HttpHeaders headers=new HttpHeaders();
         headers.add(HttpHeaders.SET_COOKIE,result.getAccessCookie().toString());
         headers.add(HttpHeaders.SET_COOKIE,result.getRefreshCookie().toString());
@@ -74,5 +101,10 @@ public class AuthController {
         headers.add(HttpHeaders.SET_COOKIE,response.getRefreshCookie().toString());
 
         return ResponseEntity.status(HttpStatus.OK).headers(headers).body(ApiResponse.success("Logout successful"));
+    }
+
+
+    private String getClientIp(HttpServletRequest request) {
+        return request.getRemoteAddr();
     }
 }
